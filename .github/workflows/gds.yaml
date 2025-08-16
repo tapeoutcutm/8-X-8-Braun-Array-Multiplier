@@ -8,7 +8,7 @@ jobs:
   gds:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repo
+      - name: checkout repo
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -33,7 +33,7 @@ jobs:
     needs: gds
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repo
+      - name: checkout repo
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -58,7 +58,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./viewer  
+          path: ./viewer   
+          name: tt-viewer  
 
   deploy:
     needs: viewer
@@ -73,3 +74,5 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: tt-viewer   
