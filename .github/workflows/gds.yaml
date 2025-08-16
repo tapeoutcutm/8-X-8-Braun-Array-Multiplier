@@ -2,7 +2,7 @@ name: gds
 
 on:
   push:
-    branches: [ main ]  # Only run on main branch to reduce conflicts
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -47,24 +47,6 @@ jobs:
   viewer:
     needs: gds
     runs-on: ubuntu-24.04
-    permissions:
-      pages: write      # allow GitHub Pages deploy
-      id-token: write   # needed for OIDC auth
-    steps:
-      - name: Generate Viewer
-        uses: TinyTapeout/tt-gds-action/viewer@ttsky25a
-        with:
-          pdk: sky130
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./viewer
-          name: viewer-pages  # Use unique name
-
-  deploy:
-    needs: viewer
-    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -72,8 +54,23 @@ jobs:
       pages: write
       id-token: write
     steps:
+      - name: Generate Viewer
+        uses: TinyTapeout/tt-gds-action/viewer@ttsky25a
+        with:
+          pdk: sky130
+
+      # Manual deployment without conflicts
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./viewer
+          name: my-unique-viewer-artifact
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
         with:
-          artifact_name: viewer-pages  # Match the unique name
+          artifact_name: my-unique-viewer-artifact
