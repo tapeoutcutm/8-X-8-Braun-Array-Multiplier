@@ -2,6 +2,7 @@ name: gds
 
 on:
   push:
+    branches: [ main ]  # Only run on main branch to reduce conflicts
   workflow_dispatch:
 
 jobs:
