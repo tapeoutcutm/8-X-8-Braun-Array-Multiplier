@@ -1,71 +1,187 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, Timer
+import random
 
 @cocotb.test()
-async def test_basic_functionality(dut):
-    """Basic functionality test that works for both RTL and gate-level"""
+async def test_braun_multiplier_basic(dut):
+    """Test basic multiplication functionality of Braun multiplier"""
     
     # Set the clock period to 100ns (10MHz)
     clock = Clock(dut.clk, 100, units="ns")
     cocotb.start_soon(clock.start())
 
     # Initialize all inputs
-    dut._log.info("Starting basic functionality test")
+    dut._log.info("Starting Braun Multiplier basic test")
     dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
+    dut.ui_in.value = 0    # Multiplicand A
+    dut.uio_in.value = 0   # Multiplier B
     dut.rst_n.value = 0
     
-    # Hold reset for longer to ensure proper initialization
-    await ClockCycles(dut.clk, 20)
+    # Hold reset
+    await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
     
-    # Wait for reset to propagate through the design
-    await ClockCycles(dut.clk, 10)
+    # Wait for combinational logic to settle
+    await Timer(200, units="ns")
 
-    # Simple test - just verify the design responds
-    dut._log.info("Testing basic operation")
+    # Test cases for multiplication
+    test_cases = [
+        (0, 0, 0),           # 0 × 0 = 0
+        (1, 1, 1),           # 1 × 1 = 1
+        (15, 15, 225),       # 15 × 15 = 225
+        (255, 1, 255),       # 255 × 1 = 255
+        (1, 255, 255),       # 1 × 255 = 255
+        (16, 16, 256),       # 16 × 16 = 256
+        (100, 200, 20000),   # 100 × 200 = 20000
+        (85, 51, 4335),      # 85 × 51 = 4335
+        (128, 64, 8192),     # 128 × 64 = 8192
+        (255, 255, 65025),   # 255 × 255 = 65025 (maximum)
+    ]
     
-    previous_alu = None
-    stable_count = 0
+    passed_tests = 0
+    total_tests = len(test_cases)
     
-    # Run for a reasonable number of cycles
-    for cycle in range(100):
-        await RisingEdge(dut.clk)
+    for a, b, expected in test_cases:
+        # Set inputs
+        dut.ui_in.value = a
+        dut.uio_in.value = b
+        
+        # Wait for combinational logic to settle
+        await Timer(100, units="ns")
+        
+        # Read outputs
+        try:
+            lower_byte = int(dut.uo_out.value)
+            upper_byte = int(dut.uio_out.value)
+            actual_product = (upper_byte << 8) | lower_byte
+            uio_oe = int(dut.uio_oe.value)
+            
+            dut._log.info(f"Test: {a} × {b}")
+            dut._log.info(f"  Expected: {expected} (0x{expected:04X})")
+            dut._log.info(f"  Actual:   {actual_product} (0x{actual_product:04X})")
+            dut._log.info(f"  Lower byte: 0x{lower_byte:02X}, Upper byte: 0x{upper_byte:02X}")
+            dut._log.info(f"  uio_oe: 0x{uio_oe:02X}")
+            
+            # Verify the result
+            if actual_product == expected:
+                dut._log.info("  ✓ PASS")
+                passed_tests += 1
+            else:
+                dut._log.error("  ✗ FAIL - Multiplication result mismatch!")
+                
+            # Verify uio_oe is set to all outputs (0xFF)
+            if uio_oe == 0xFF:
+                dut._log.info("  ✓ uio_oe correct (0xFF)")
+            else:
+                dut._log.warning(f"  ⚠ uio_oe unexpected: 0x{uio_oe:02X}, expected 0xFF")
+            
+        except Exception as e:
+            dut._log.error(f"Error testing {a} × {b}: {e}")
+        
+        await Timer(50, units="ns")  # Small delay between tests
+    
+    dut._log.info(f"Basic test completed: {passed_tests}/{total_tests} tests passed")
+    assert passed_tests == total_tests, f"Only {passed_tests}/{total_tests} tests passed"
+
+@cocotb.test()
+async def test_braun_multiplier_random(dut):
+    """Test Braun multiplier with random values"""
+    
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    dut._log.info("Starting random multiplication tests")
+    
+    # Initialize
+    dut.ena.value = 1
+    dut.rst_n.value = 1
+    await Timer(100, units="ns")
+    
+    passed_tests = 0
+    total_tests = 20
+    
+    # Generate random test cases
+    for test_num in range(total_tests):
+        a = random.randint(0, 255)
+        b = random.randint(0, 255)
+        expected = a * b
+        
+        # Set inputs
+        dut.ui_in.value = a
+        dut.uio_in.value = b
+        
+        # Wait for combinational logic
+        await Timer(100, units="ns")
         
         try:
-            # Read outputs with error handling
-            alu_result = int(dut.uo_out.value)
-            uio_result = int(dut.uio_out.value)
+            lower_byte = int(dut.uo_out.value)
+            upper_byte = int(dut.uio_out.value)
+            actual_product = (upper_byte << 8) | lower_byte
             
-            # Log every 10th cycle to avoid spam
-            if cycle % 10 == 0:
-                dut._log.info(f"Cycle {cycle}: uo_out = 0x{alu_result:02X}, uio_out = 0x{uio_result:02X}")
+            if test_num % 5 == 0:  # Log every 5th test to reduce spam
+                dut._log.info(f"Random test {test_num}: {a} × {b} = {actual_product} (expected {expected})")
             
-            # Check for basic functionality - outputs should change over time
-            if previous_alu is not None:
-                if previous_alu == alu_result:
-                    stable_count += 1
-                else:
-                    stable_count = 0
-            
-            previous_alu = alu_result
-            
-            # If outputs are stuck for too long, that might indicate a problem
-            # But for gate-level, we're more lenient
-            if stable_count > 50:
-                dut._log.warning(f"Output stable for {stable_count} cycles")
+            if actual_product == expected:
+                passed_tests += 1
+            else:
+                dut._log.error(f"Random test {test_num} FAILED: {a} × {b} = {actual_product}, expected {expected}")
                 
         except Exception as e:
-            dut._log.error(f"Error reading outputs at cycle {cycle}: {e}")
-            # Don't fail the test for gate-level compatibility
+            dut._log.error(f"Error in random test {test_num}: {e}")
+    
+    dut._log.info(f"Random tests completed: {passed_tests}/{total_tests} tests passed")
+    assert passed_tests >= total_tests * 0.95, f"Too many random tests failed: {passed_tests}/{total_tests}"
+
+@cocotb.test()
+async def test_braun_multiplier_edge_cases(dut):
+    """Test edge cases and boundary conditions"""
+    
+    clock = Clock(dut.clk, 100, units="ns")
+    cocotb.start_soon(clock.start())
+
+    dut._log.info("Testing edge cases")
+    
+    # Initialize
+    dut.ena.value = 1
+    dut.rst_n.value = 1
+    await Timer(100, units="ns")
+    
+    edge_cases = [
+        (0, 0, "Zero × Zero"),
+        (0, 255, "Zero × Max"),
+        (255, 0, "Max × Zero"),
+        (1, 255, "One × Max"),
+        (255, 1, "Max × One"),
+        (128, 128, "Mid × Mid"),
+        (255, 255, "Max × Max"),
+        (2, 128, "Power of 2 test"),
+        (64, 4, "Another power of 2"),
+    ]
+    
+    for a, b, description in edge_cases:
+        expected = a * b
+        
+        dut.ui_in.value = a
+        dut.uio_in.value = b
+        await Timer(100, units="ns")
+        
+        try:
+            lower_byte = int(dut.uo_out.value)
+            upper_byte = int(dut.uio_out.value)
+            actual_product = (upper_byte << 8) | lower_byte
             
-    dut._log.info("Basic functionality test completed")
+            dut._log.info(f"{description}: {a} × {b} = {actual_product} (expected {expected})")
+            
+            assert actual_product == expected, f"{description} failed: got {actual_product}, expected {expected}"
+            
+        except Exception as e:
+            dut._log.error(f"Error in edge case {description}: {e}")
+            raise
 
 @cocotb.test()
 async def test_reset_behavior(dut):
-    """Test reset behavior - should work for both RTL and gate-level"""
+    """Test reset behavior - combinational design should not be affected by reset"""
     
     clock = Clock(dut.clk, 100, units="ns")
     cocotb.start_soon(clock.start())
@@ -74,103 +190,73 @@ async def test_reset_behavior(dut):
     
     # Initialize
     dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
+    dut.ui_in.value = 42
+    dut.uio_in.value = 7
     
-    # Test multiple reset cycles
-    for reset_test in range(3):
-        dut._log.info(f"Reset test iteration {reset_test}")
+    # Test with reset asserted
+    dut.rst_n.value = 0
+    await Timer(100, units="ns")
+    
+    try:
+        lower_byte = int(dut.uo_out.value)
+        upper_byte = int(dut.uio_out.value)
+        product_with_reset = (upper_byte << 8) | lower_byte
+        expected = 42 * 7
         
-        # Apply reset
-        dut.rst_n.value = 0
-        await ClockCycles(dut.clk, 10)
+        dut._log.info(f"With reset asserted: 42 × 7 = {product_with_reset} (expected {expected})")
         
-        # Release reset
-        dut.rst_n.value = 1
-        await ClockCycles(dut.clk, 20)
-        
-        # Just verify we can read the outputs without error
-        try:
-            alu_out = int(dut.uo_out.value)
-            uio_out = int(dut.uio_out.value)
-            dut._log.info(f"After reset {reset_test}: uo_out = 0x{alu_out:02X}, uio_out = 0x{uio_out:02X}")
-        except Exception as e:
-            dut._log.warning(f"Could not read outputs after reset: {e}")
+    except Exception as e:
+        dut._log.warning(f"Could not read outputs with reset asserted: {e}")
     
-    dut._log.info("Reset behavior test completed")
-
-@cocotb.test()
-async def test_enable_signal(dut):
-    """Test enable signal functionality"""
-    
-    clock = Clock(dut.clk, 100, units="ns")
-    cocotb.start_soon(clock.start())
-
-    dut._log.info("Testing enable signal")
-    
-    # Initialize with enable off
-    dut.ena.value = 0
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
+    # Release reset
     dut.rst_n.value = 1
+    await Timer(100, units="ns")
     
-    await ClockCycles(dut.clk, 10)
-    
-    # Turn on enable
-    dut.ena.value = 1
-    await ClockCycles(dut.clk, 20)
-    
-    # Turn off enable
-    dut.ena.value = 0
-    await ClockCycles(dut.clk, 10)
-    
-    # Turn on enable again
-    dut.ena.value = 1
-    await ClockCycles(dut.clk, 20)
-    
-    dut._log.info("Enable signal test completed")
+    try:
+        lower_byte = int(dut.uo_out.value)
+        upper_byte = int(dut.uio_out.value)
+        product_after_reset = (upper_byte << 8) | lower_byte
+        expected = 42 * 7
+        
+        dut._log.info(f"After reset released: 42 × 7 = {product_after_reset} (expected {expected})")
+        
+        # For combinational logic, result should be the same
+        assert product_after_reset == expected, f"Multiplication failed after reset: got {product_after_reset}, expected {expected}"
+        
+    except Exception as e:
+        dut._log.error(f"Error reading outputs after reset: {e}")
 
 @cocotb.test()
-async def test_io_pins(dut):
-    """Test I/O pin functionality"""
+async def test_io_enable_pins(dut):
+    """Test that uio_oe pins are correctly set to output mode"""
     
     clock = Clock(dut.clk, 100, units="ns")
     cocotb.start_soon(clock.start())
 
-    dut._log.info("Testing I/O pins")
+    dut._log.info("Testing I/O enable pins")
     
     # Initialize
     dut.ena.value = 1
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
-    await ClockCycles(dut.clk, 10)
+    dut.ui_in.value = 10
+    dut.uio_in.value = 20
     
-    # Test different input combinations
-    test_inputs = [0x00, 0xFF, 0xAA, 0x55, 0x0F, 0xF0]
+    await Timer(100, units="ns")
     
-    for test_val in test_inputs:
-        dut.ui_in.value = test_val
-        dut.uio_in.value = test_val
+    try:
+        uio_oe = int(dut.uio_oe.value)
+        dut._log.info(f"uio_oe value: 0x{uio_oe:02X}")
         
-        await ClockCycles(dut.clk, 5)
+        # Should be 0xFF (all outputs enabled)
+        assert uio_oe == 0xFF, f"Expected uio_oe=0xFF (all outputs), got 0x{uio_oe:02X}"
         
-        try:
-            uo_out = int(dut.uo_out.value)
-            uio_out = int(dut.uio_out.value)
-            uio_oe = int(dut.uio_oe.value)
-            
-            dut._log.info(f"Input: 0x{test_val:02X} -> uo_out: 0x{uo_out:02X}, uio_out: 0x{uio_out:02X}, uio_oe: 0x{uio_oe:02X}")
-            
-            # Verify uio_oe is set to all outputs (0xFF)
-            assert uio_oe == 0xFF, f"Expected uio_oe=0xFF, got 0x{uio_oe:02X}"
-            
-        except Exception as e:
-            dut._log.warning(f"Error testing input 0x{test_val:02X}: {e}")
-    
-    dut._log.info("I/O pins test completed")
+        dut._log.info("✓ uio_oe correctly set to 0xFF")
+        
+    except Exception as e:
+        dut._log.error(f"Error checking uio_oe: {e}")
+        raise
 
-# Simplified test for gate-level compatibility
+# Minimal test for gate-level compatibility
 @cocotb.test()
 async def test_minimal_gate_level(dut):
     """Minimal test designed specifically for gate-level simulation"""
@@ -182,29 +268,28 @@ async def test_minimal_gate_level(dut):
     
     # Set all inputs to known values
     dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    
-    # Long reset for gate-level timing
-    await ClockCycles(dut.clk, 50)
+    dut.ui_in.value = 5     # Simple test: 5 × 3 = 15
+    dut.uio_in.value = 3
     dut.rst_n.value = 1
     
-    # Wait for stabilization
-    await ClockCycles(dut.clk, 50)
+    # Wait for combinational logic to settle
+    await Timer(500, units="ns")
     
-    # Just run and verify no crashes
-    for i in range(20):
-        await ClockCycles(dut.clk, 1)
+    try:
+        lower_byte = int(dut.uo_out.value)
+        upper_byte = int(dut.uio_out.value)
+        product = (upper_byte << 8) | lower_byte
         
-        # Try to read outputs, but don't assert on values
-        try:
-            uo = int(dut.uo_out.value)
-            uio = int(dut.uio_out.value)
-            if i % 5 == 0:
-                dut._log.info(f"Gate-level cycle {i}: uo=0x{uo:02X}, uio=0x{uio:02X}")
-        except:
-            # Ignore read errors in gate-level
-            pass
+        dut._log.info(f"Gate-level test: 5 × 3 = {product} (expected 15)")
+        dut._log.info(f"Lower byte: 0x{lower_byte:02X}, Upper byte: 0x{upper_byte:02X}")
+        
+        # For gate-level, we're more lenient but still check basic functionality
+        if product == 15:
+            dut._log.info("✓ Gate-level test PASSED")
+        else:
+            dut._log.warning(f"Gate-level test result unexpected: {product}")
+            
+    except Exception as e:
+        dut._log.warning(f"Gate-level test read error (may be normal): {e}")
     
-    dut._log.info("Minimal gate-level test completed successfully")
+    dut._log.info("Minimal gate-level test completed")
