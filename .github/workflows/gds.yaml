@@ -2,14 +2,7 @@ name: gds
 
 on:
   push:
-    branches: [ main ]
   workflow_dispatch:
-
-# 🔑 Required for GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 jobs:
   gds:
@@ -21,20 +14,19 @@ jobs:
           submodules: recursive
 
       - name: Build GDS
-        uses: TinyTapeout/tt-gds-action@ttsky25a
+        uses: TinyTapeout/tt-gds-action@ttihp25b
         with:
-          pdk: sky130
-          tools-ref: ttsky25a
+          pdk: ihp
+          upload-pages-artifact: false   # 🚀 prevent duplicate Pages artifact
 
   precheck:
     needs: gds
     runs-on: ubuntu-24.04
     steps:
       - name: Run Tiny Tapeout Precheck
-        uses: TinyTapeout/tt-gds-action/precheck@ttsky25a
+        uses: TinyTapeout/tt-gds-action/precheck@ttihp25b
         with:
-          pdk: sky130
-          tools-ref: ttsky25a
+          pdk: ihp
 
   gl_test:
     needs: gds
@@ -46,31 +38,15 @@ jobs:
           submodules: recursive
 
       - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@ttsky25a
+        uses: TinyTapeout/tt-gds-action/gl_test@ttihp25b
         with:
-          pdk: sky130
+          pdk: ihp
 
   viewer:
     needs: gds
     runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
+    permissions:
+      pages: write   # to deploy to Pages
+      id-token: write
     steps:
-      - name: Generate Viewer
-        uses: TinyTapeout/tt-gds-action/viewer@ttsky25a
-        with:
-          pdk: sky130
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-      
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: viewer  # 👈 change if your viewer output folder is different
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: TinyTapeout/tt-gds-action/viewer@ttihp25b
