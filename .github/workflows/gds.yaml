@@ -2,6 +2,7 @@ name: gds
 
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -14,19 +15,20 @@ jobs:
           submodules: recursive
 
       - name: Build GDS
-        uses: TinyTapeout/tt-gds-action@ttihp25b
+        uses: TinyTapeout/tt-gds-action@ttsky25a
         with:
-          pdk: ihp
-          upload-pages-artifact: false   # 🚀 prevent duplicate Pages artifact
+          pdk: sky130
+          tools-ref: ttsky25a
 
   precheck:
     needs: gds
     runs-on: ubuntu-24.04
     steps:
       - name: Run Tiny Tapeout Precheck
-        uses: TinyTapeout/tt-gds-action/precheck@ttihp25b
+        uses: TinyTapeout/tt-gds-action/precheck@ttsky25a
         with:
-          pdk: ihp
+          pdk: sky130
+          tools-ref: ttsky25a
 
   gl_test:
     needs: gds
@@ -38,15 +40,43 @@ jobs:
           submodules: recursive
 
       - name: GL test
-        uses: TinyTapeout/tt-gds-action/gl_test@ttihp25b
+        uses: TinyTapeout/tt-gds-action/gl_test@ttsky25a
         with:
-          pdk: ihp
+          pdk: sky130
 
   viewer:
     needs: gds
     runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
     permissions:
-      pages: write   # to deploy to Pages
+      pages: write
       id-token: write
     steps:
-      - uses: TinyTapeout/tt-gds-action/viewer@ttihp25b
+      - name: Generate Viewer
+        uses: TinyTapeout/tt-gds-action/viewer@ttsky25a
+        with:
+          pdk: sky130
+
+      # Debug step to check files
+      - name: List files to debug
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Looking for viewer-related directories:"
+          find . -name "*viewer*" -o -name "*html*" -o -name "*site*" 2>/dev/null || true
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+          name: my-unique-viewer-artifact
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: my-unique-viewer-artifact
