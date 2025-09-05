@@ -1,6 +1,6 @@
 # Tiny Tapeout project information
 project:
-  title:       "8x8 Braun Array Multiplier"           # Project title
+  title:       "Design and Implementation of a Low-Power 8×8 Braun Array Multiplier"           # Project title
   author:      "Rakesh"                               # Your name (based on GitHub)
   discord:     "rakesh_999"                           # Your Discord handle (optional)
   description: "An 8x8 unsigned Braun array multiplier that computes the product of two 8-bit numbers, producing a 16-bit result using a systematic array of full and half adders"
